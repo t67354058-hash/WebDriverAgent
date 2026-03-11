@@ -3,7 +3,7 @@ on: [workflow_dispatch]
 
 jobs:
   build:
-    runs-on: macos-13 # macOS 13 ist oft stabiler für WDA-Builds
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
         with:
@@ -12,7 +12,7 @@ jobs:
       - name: Build WebDriverAgent
         run: |
           mkdir -p Payload
-          # Wir bauen das Projekt und erzwingen, dass Xcode nicht abbricht
+          # Wir bauen gezielt das Runner-Ziel, das ist stabiler für IPAs
           xcodebuild build-for-testing \
             -project WebDriverAgent.xcodeproj \
             -scheme WebDriverAgentRunner \
@@ -21,79 +21,27 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
-            COMPILER_INDEX_STORE_ENABLE=NO || echo "Build finished with errors, but we continue..."
+            PROVISIONING_PROFILE_SPECIFIER=""
 
-          # Jetzt suchen wir den Runner-Ordner
-          APP_PATH=$(find build/Build/Products -name "WebDriverAgentRunner-Runner.app" -type d | head -n 1)
+          # Wir suchen ALLES, was auf .app endet im Build-Ordner
+          find build/Build/Products -name "*.app" -type d
           
-          if [ -z "$APP_PATH" ]; then
-            echo "Konnte Runner.app nicht finden!"
+          # Wir nehmen den WebDriverAgentRunner-Runner.app
+          TARGET_APP=$(find build/Build/Products -name "WebDriverAgentRunner-Runner.app" -type d | head -n 1)
+          
+          if [ -z "$TARGET_APP" ]; then
+            echo "Fehler: Runner.app nicht gefunden!"
             exit 1
           fi
 
-          echo "App gefunden unter: $APP_PATH"
+          echo "Kopiere App von: $TARGET_APP"
+          cp -PR "$TARGET_APP" Payload/
           
-          # Wir kopieren die App in den Payload
-          cp -R "$APP_PATH" Payload/
-          
-          # WICHTIG: Wir prüfen, ob die Frameworks drin sind
-          ls -R Payload/*.app/Frameworks || echo "Frameworks fehlen noch..."
-          
-          # Wir packen alles in die IPA
-          zip -r WebDriverAgent.ipa Payload/
+          # Wir packen es ein
+          zip -ry WebDriverAgent.ipa Payload/
           
       - name: Upload IPA
-        uses: actions/upload-artifact@v4
-        with:
-          name: WebDriverAgent-IPA
-          path: WebDriverAgent.ipaname: Build WDA IPA
-on: [workflow_dispatch]
-
-jobs:
-  build:
-    runs-on: macos-13 # macOS 13 ist oft stabiler für WDA-Builds
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Build WebDriverAgent
-        run: |
-          mkdir -p Payload
-          # Wir bauen das Projekt und erzwingen, dass Xcode nicht abbricht
-          xcodebuild build-for-testing \
-            -project WebDriverAgent.xcodeproj \
-            -scheme WebDriverAgentRunner \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
-            COMPILER_INDEX_STORE_ENABLE=NO || echo "Build finished with errors, but we continue..."
-
-          # Jetzt suchen wir den Runner-Ordner
-          APP_PATH=$(find build/Build/Products -name "WebDriverAgentRunner-Runner.app" -type d | head -n 1)
-          
-          if [ -z "$APP_PATH" ]; then
-            echo "Konnte Runner.app nicht finden!"
-            exit 1
-          fi
-
-          echo "App gefunden unter: $APP_PATH"
-          
-          # Wir kopieren die App in den Payload
-          cp -R "$APP_PATH" Payload/
-          
-          # WICHTIG: Wir prüfen, ob die Frameworks drin sind
-          ls -R Payload/*.app/Frameworks || echo "Frameworks fehlen noch..."
-          
-          # Wir packen alles in die IPA
-          zip -r WebDriverAgent.ipa Payload/
-          
-      - name: Upload IPA
-        uses: actions/upload-artifact@v4
+        uses: uses: actions/upload-artifact@v4
         with:
           name: WebDriverAgent-IPA
           path: WebDriverAgent.ipa
