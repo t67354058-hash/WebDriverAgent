@@ -1,26 +1,37 @@
 name: Build WDA IPA
-on: [workflow_dispatch] # Erlaubt uns, den Build manuell zu starten
+on: [workflow_dispatch]
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-14 # Wir nehmen eine feste Version für mehr Stabilität
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Setup Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
-        
+        with:
+          submodules: recursive # Lädt alle Abhängigkeiten mit
+
       - name: Build WebDriverAgent
         run: |
-          mkdir Payload
+          mkdir -p Payload
+          # Wir erzwingen den Build OHNE Signierung
           xcodebuild build-for-testing \
             -project WebDriverAgent.xcodeproj \
             -scheme WebDriverAgentRunner \
             -destination 'generic/platform=iOS' \
-            -derivedDataPath build
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO
+
+          # Wir suchen die App im Build-Ordner, egal wo sie genau liegt
+          APP_PATH=$(find build/Build/Products -name "WebDriverAgentRunner-Runner.app" -type d | head -n 1)
+          echo "Gefundener App-Pfad: $APP_PATH"
           
-          # Das "Gehirn" der App in den Payload-Ordner schieben
-          cp -r build/Build/Products/Debug-iphoneos/WebDriverAgentRunner-Runner.app Payload/
+          if [ -z "$APP_PATH" ]; then
+            echo "Fehler: App wurde nicht gefunden!"
+            exit 1
+          fi
+
+          cp -r "$APP_PATH" Payload/
           zip -r WebDriverAgent.ipa Payload/
           
       - name: Upload IPA
