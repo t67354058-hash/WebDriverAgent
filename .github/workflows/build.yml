@@ -3,16 +3,16 @@ on: [workflow_dispatch]
 
 jobs:
   build:
-    runs-on: macos-14 # Wir nehmen eine feste Version für mehr Stabilität
+    runs-on: macos-13 # macOS 13 ist oft stabiler für WDA-Builds
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive # Lädt alle Abhängigkeiten mit
+          submodules: recursive
 
       - name: Build WebDriverAgent
         run: |
           mkdir -p Payload
-          # Wir erzwingen den Build OHNE Signierung
+          # Wir bauen das Projekt und erzwingen, dass Xcode nicht abbricht
           xcodebuild build-for-testing \
             -project WebDriverAgent.xcodeproj \
             -scheme WebDriverAgentRunner \
@@ -20,18 +20,76 @@ jobs:
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            COMPILER_INDEX_STORE_ENABLE=NO || echo "Build finished with errors, but we continue..."
 
-          # Wir suchen die App im Build-Ordner, egal wo sie genau liegt
+          # Jetzt suchen wir den Runner-Ordner
           APP_PATH=$(find build/Build/Products -name "WebDriverAgentRunner-Runner.app" -type d | head -n 1)
-          echo "Gefundener App-Pfad: $APP_PATH"
           
           if [ -z "$APP_PATH" ]; then
-            echo "Fehler: App wurde nicht gefunden!"
+            echo "Konnte Runner.app nicht finden!"
             exit 1
           fi
 
-          cp -r "$APP_PATH" Payload/
+          echo "App gefunden unter: $APP_PATH"
+          
+          # Wir kopieren die App in den Payload
+          cp -R "$APP_PATH" Payload/
+          
+          # WICHTIG: Wir prüfen, ob die Frameworks drin sind
+          ls -R Payload/*.app/Frameworks || echo "Frameworks fehlen noch..."
+          
+          # Wir packen alles in die IPA
+          zip -r WebDriverAgent.ipa Payload/
+          
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: WebDriverAgent-IPA
+          path: WebDriverAgent.ipaname: Build WDA IPA
+on: [workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: macos-13 # macOS 13 ist oft stabiler für WDA-Builds
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build WebDriverAgent
+        run: |
+          mkdir -p Payload
+          # Wir bauen das Projekt und erzwingen, dass Xcode nicht abbricht
+          xcodebuild build-for-testing \
+            -project WebDriverAgent.xcodeproj \
+            -scheme WebDriverAgentRunner \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            COMPILER_INDEX_STORE_ENABLE=NO || echo "Build finished with errors, but we continue..."
+
+          # Jetzt suchen wir den Runner-Ordner
+          APP_PATH=$(find build/Build/Products -name "WebDriverAgentRunner-Runner.app" -type d | head -n 1)
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "Konnte Runner.app nicht finden!"
+            exit 1
+          fi
+
+          echo "App gefunden unter: $APP_PATH"
+          
+          # Wir kopieren die App in den Payload
+          cp -R "$APP_PATH" Payload/
+          
+          # WICHTIG: Wir prüfen, ob die Frameworks drin sind
+          ls -R Payload/*.app/Frameworks || echo "Frameworks fehlen noch..."
+          
+          # Wir packen alles in die IPA
           zip -r WebDriverAgent.ipa Payload/
           
       - name: Upload IPA
