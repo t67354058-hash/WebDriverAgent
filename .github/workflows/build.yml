@@ -1,0 +1,30 @@
+name: Build WDA IPA
+on: [workflow_dispatch] # Erlaubt uns, den Build manuell zu starten
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+        
+      - name: Build WebDriverAgent
+        run: |
+          mkdir Payload
+          xcodebuild build-for-testing \
+            -project WebDriverAgent.xcodeproj \
+            -scheme WebDriverAgentRunner \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build
+          
+          # Das "Gehirn" der App in den Payload-Ordner schieben
+          cp -r build/Build/Products/Debug-iphoneos/WebDriverAgentRunner-Runner.app Payload/
+          zip -r WebDriverAgent.ipa Payload/
+          
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: WebDriverAgent-IPA
+          path: WebDriverAgent.ipa
